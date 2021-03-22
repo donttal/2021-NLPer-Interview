@@ -1,0 +1,27 @@
+# BERT4REC：使用Bert进行推荐
+## 为什么需要在推荐中引入attention机制
+深度学习在推荐系统的应用中，最经典的范式是Embedding&MLP(代表为Youtube DNN)。这种范式中，要预测的item ID、用户历史交互item ID等高维category特征都被映射成为低维的embedding，我们知道MLP只能接受固定长度的输入，**而用户历史上交互过的item数目是不固定，Embedding&MLP范式的应对方法是把用户交互过的item embedding求均值(进行average pooling操作)，然后把这个固定长度的均值作为user representation的一部分**，详细可参考我的另外一篇介绍文章。粗暴地对用户交互的item的embedding求均值并不符合直觉，举个例子，一个用户历史上观看过吐槽大会、小猪佩奇和守望者三部视频，要预测用户点击蝙蝠侠概率，那么直觉上守望者应该在user representation起更大作用，而要预测用户是否会点击汪汪队立大功，那么小猪佩奇应该在user representation中起更大作用，也就是说“**当预测的目标不同时，我们应当依据目标对用户交互过的item给予不同的关注度(不同程度的attention)”。**
+
+## Attention机制
+Attention function接受一个query和一组key-value对作为输入，并将value的加权和作为输出(query,key,value都是向量,很多情况下key和value是同一个vector)。进行加权求和的时候，某个value对应的权重由query和此value对应的key共同决定。权重的决定机制主流的有两种，一种是以query和key的内积决定，内积越大，则权重越高；另外一种是将query和key作为有一个隐层的神经网络的输入，网络的输出决定权重。
+
+举个栗子，DIN中，预测用户是否会点击某个item A时，A的embedding就是query, 用户交互过的一组item的embedding就是key和value(这个场景下key和value一致)，而输出的结果，就是所谓label-aware用户embedding。
+
+## Self attention
+Self Attention输入的是序列的embedding(例如用户一个session内播放了10个视频，则输入就是10个向量)，输出是相同个数“增强”后的embedding。输入的序列的embedding同时扮演query、key和value三种角色，具体来说，依次以序列的中的每个item作为query,将计算得到的向量作为此item“增强”后的表示，便可以得到与输入item个数相同的增强表示。
+
+## Multi-Head Attention
+Multi-Head Attention 使用一组(假设有h个)参数可学习的变换矩阵将query、key、value进行线性变换，对变换后的query、key、value并行进行h次 attention，并将这组attention的结果连接并变换后作为输出。Multi-Head attention看起来计算比较麻烦，不过进行变换时一般都会对原先的query等进行大幅度地降维，所以实际上增加不了太多计算成本，而使用Multi-Head attention的好处就是可以让**模型在数据的不同特征子空间进行学习**，anyway，实验证明效果更好。
+
+## Transformer
+在Transformer出现之前，序列(sequence)数据处理的主流算法是RNN，RNN每次处理序列中的一个节点，并自身带有一个hidden vector，用来“记忆”之前处理的过的节点等信息，并在处理当前节点时修改hidden vector，RNN本身的特性很适合处理序列数据，但局限也很明显，第一因为RNN依次处理序列中的节点，所以很不容易并行；第二，如果要回溯离当前节点很远的节点的信息，比较困难，也就是所谓的long path depency的问题。Transformer的提出解决了上述两个问题，而transformer的秘密武器就是attention机制，下面一起看一下transformer的结构
+
+## BERT
+BERT的全称是Bidirectional Encoder Representations from Transformer，从名称上可以看出来BERT从Transformer中取Encoder部分，进行Bidirectional Representation的representation learning。
+
+BERT的作用类似CNN, 扮演的是feature extractor提取的角色，CNN从图片中提取特征(representation)，输入后续的classifier或detector等执行具体任务的模块，另外，CV中还有一个被广泛使用的技巧——先把feature extractor放在Image Net上分类任务的预训练，然后再使用具体的任务进行fine tuning。BERT类似word2vec，使用语料自身的结构定义了若干训练任务(word2vec是预测相邻词)，通过这种自监督学习在海量语料上调整BERT模型的参数，当有更具体的任务时，BERT扮演CNN类似的feature extractor的角色，输入时tokens，输出是信息量丰富的vectors。
+
+## BERT4Rec
+这篇文章定义推荐问题为，知道用户的播放(购买，whatever)序列 item1, item2, item3，预测下一个播放的item问题。训练的时候使用Mask LM任务使用海量用户行为序列进行训练，预测的时候在序列的最后插入一个“MASK”,然后用 “MASK”增强后的embedding做预测用户接下来会观看哪个item，接着后面在几个数据集上试了一下，讨论不同模型参数和训练数据设置的影响，创新性不大。
+
+对实际工作，可以为了一个思路上的参考，而且文章中没有使用用户属性和场景的信息，只使用了行为信息，如何把额外的信息加入模型是值得重点探索的
